@@ -33,7 +33,7 @@ func (a *App) Run(ctx context.Context) error {
 
 	listenAddr := os.Getenv("SERVER_AGENT_LISTEN_ADDR")
 	if listenAddr == "" {
-		listenAddr = ":8000"
+		listenAddr = ":9000"
 	}
 
 	go func() {
