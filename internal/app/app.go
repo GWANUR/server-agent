@@ -9,7 +9,6 @@ import (
 	"os"
 	"server-agent/internal/config"
 	"server-agent/internal/monitor"
-	"server-agent/internal/terminal"
 	"server-agent/internal/websocket"
 	"time"
 )
@@ -31,23 +30,6 @@ func (a *App) Run(ctx context.Context) error {
 	log.Println("Panel URL:", a.Config.Panel.URL)
 	log.Println("Agent ID:", a.Config.Agent.ID)
 
-	listenAddr := os.Getenv("SERVER_AGENT_LISTEN_ADDR")
-	if listenAddr == "" {
-		listenAddr = ":9000"
-	}
-
-	go func() {
-		if err := websocket.Serve(listenAddr, func(command string) (string, error) {
-			result, err := terminal.Execute(command)
-			if err != nil {
-				return result.Output, err
-			}
-			return result.Output, nil
-		}); err != nil {
-			log.Printf("websocket server stopped: %v", err)
-		}
-	}()
-
 	client := websocket.New(a.Config.Panel.URL)
 	if err := client.Connect(); err != nil {
 		log.Printf("websocket connect failed: %v", err)
@@ -56,7 +38,9 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	go a.loop(ctx, client)
+
 	<-ctx.Done()
+
 	log.Println("Stopping Server Agent")
 	return nil
 }
