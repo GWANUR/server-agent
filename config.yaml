@@ -1,0 +1,19 @@
+agent:
+  id: "server-01"
+  name: "Ubuntu Server"
+
+panel:
+  url: "ws://192.168.0.147:8000/ws/agent"
+  token: "c74049fde4b99ea7a45808028bc763e3ea745b7021fddd9f020a1145486c8463"
+
+heartbeat:
+  interval: 15
+
+terminal:
+  shell: "/bin/bash"
+
+monitor:
+  interval: 2
+
+logger:
+  level: "info"
