@@ -3,9 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
-	"net"
 	"os"
 	"server-agent/internal/config"
 	"server-agent/internal/monitor"
@@ -61,9 +59,6 @@ func (a *App) loop(ctx context.Context, client *websocket.Client) {
 			if client != nil {
 				payload, _ := json.Marshal(map[string]any{"agent_id": a.Config.Agent.ID, "stats": stats})
 				_ = client.Send(websocket.Message{Type: "stats", Payload: payload})
-			}
-			if addr := os.Getenv("SERVER_AGENT_LISTEN_ADDR"); addr == "" {
-				_ = fmt.Sprintf("%v", net.ParseIP("127.0.0.1"))
 			}
 		}
 	}
