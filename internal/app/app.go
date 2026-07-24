@@ -30,7 +30,15 @@ func (a *App) Run(ctx context.Context) error {
 
 	client := websocket.New(a.Config.Panel.URL)
 	if err := client.Connect(); err != nil {
-		log.Printf("websocket connect failed: %v", err)
+		for {
+			err := client.Connect()
+			if err == nil {
+				break
+			}
+
+			log.Printf("connect failed: %v", err)
+			time.Sleep(5 * time.Second)
+		}
 	} else {
 		defer client.Close()
 	}

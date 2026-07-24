@@ -1,10 +1,11 @@
 agent:
-  id: "server-01"
+  uuid: "100f0685-688b-46e9-b588-fcd3055865c7"
   name: "Ubuntu Server"
+  version: "0.1.0"
 
 panel:
-  url: "ws://192.168.0.147:8000/ws/agent"
-  token: "c74049fde4b99ea7a45808028bc763e3ea745b7021fddd9f020a1145486c8463"
+  url: "ws://192.168.0.147/ws/agent"
+  token: "d693935112653acf3d1bf0990d85625fb526c52a7e0570e4c3deb1e4186cffad"
 
 heartbeat:
   interval: 15
