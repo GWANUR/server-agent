@@ -31,17 +31,29 @@ func (a *App) Run(ctx context.Context) error {
 	client := websocket.New(a.Config.Panel.URL)
 	if err := client.Connect(); err != nil {
 		for {
-			err := client.Connect()
-			if err == nil {
-				break
+		select {
+		case <-ctx.Done():
+			log.Println("Stopping Server Agent")
+			return nil
+
+		default:
+			if err := client.Connect(); err == nil {
+				goto connected
+			} else {
+				log.Printf("connect failed: %v", err)
 			}
 
-			log.Printf("connect failed: %v", err)
-			time.Sleep(5 * time.Second)
+			select {
+			case <-ctx.Done():
+				log.Println("Stopping Server Agent")
+				return nil
+			case <-time.After(5 * time.Second):
+			}
 		}
-	} else {
-		defer client.Close()
 	}
+
+	connected:
+	defer client.Close()
 
 	go a.loop(ctx, client)
 

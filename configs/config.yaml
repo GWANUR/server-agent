@@ -2,7 +2,7 @@ agent:
   id: "server-agent-01"
   name: "Server Agent"
 panel:
-  url: "ws://192.168.0.147:8000/ws/agent"
+  url: "ws://192.168.0.147/ws/agent"
   token: "demo-token"
 heartbeat:
   interval: 10
