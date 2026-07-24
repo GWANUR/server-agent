@@ -29,30 +29,22 @@ func (a *App) Run(ctx context.Context) error {
 	log.Println("Agent ID:", a.Config.Agent.ID)
 
 	client := websocket.New(a.Config.Panel.URL)
-	if err := client.Connect(); err != nil {
-		for {
+
+	for {
+		if err := client.Connect(); err == nil {
+			break
+		} else {
+			log.Printf("connect failed: %v", err)
+		}
+
 		select {
 		case <-ctx.Done():
 			log.Println("Stopping Server Agent")
 			return nil
-
-		default:
-			if err := client.Connect(); err == nil {
-				goto connected
-			} else {
-				log.Printf("connect failed: %v", err)
-			}
-
-			select {
-			case <-ctx.Done():
-				log.Println("Stopping Server Agent")
-				return nil
-			case <-time.After(5 * time.Second):
-			}
+		case <-time.After(5 * time.Second):
 		}
 	}
 
-	connected:
 	defer client.Close()
 
 	go a.loop(ctx, client)
