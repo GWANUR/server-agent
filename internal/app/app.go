@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"server-agent/internal/config"
@@ -37,14 +38,16 @@ func (a *App) Run(ctx context.Context) error {
 			log.Println("Connected to panel")
 			payload, _ := json.Marshal(map[string]any{
 				"agent_id": a.Config.Agent.ID,
-				"test":     true,
 			})
 
 			err := client.Send(websocket.Message{
-				Type:    "hello",
+				Type:    "auth",
 				Payload: payload,
 			})
-
+			if err != nil {
+				return err
+			}
+			log.Println("Auth message sent")
 			log.Printf("Send result: %v", err)
 			break
 		} else {
@@ -58,11 +61,31 @@ func (a *App) Run(ctx context.Context) error {
 		}
 	}
 
+	msg, err := client.Read()
+	if err != nil {
+		return err
+	}
+
+	log.Printf("received: %s", msg)
+	type ServerMessage struct {
+		Type string `json:"type"`
+	}
+
+	var response ServerMessage
+
+	if err := json.Unmarshal([]byte(msg), &response); err != nil {
+		return err
+	}
+
+	if response.Type != "auth_ok" {
+		return fmt.Errorf("authentication failed: %s", response.Type)
+	}
+
+	log.Println("Agent authorized")
 	defer client.Close()
 
 	go a.loop(ctx, client)
 	go a.readLoop(ctx, client)
-
 	<-ctx.Done()
 
 	log.Println("Stopping Server Agent")
