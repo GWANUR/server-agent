@@ -31,15 +31,17 @@ func (a *App) Run(ctx context.Context) error {
 	client := websocket.New(a.Config.Panel.URL)
 
 	for {
+		log.Println("Connecting to panel...")
+
 		if err := client.Connect(); err == nil {
+			log.Println("Connected to panel")
 			break
 		} else {
-			log.Printf("connect failed: %v", err)
+			log.Printf("Connect failed: %v", err)
 		}
 
 		select {
 		case <-ctx.Done():
-			log.Println("Stopping Server Agent")
 			return nil
 		case <-time.After(5 * time.Second):
 		}
@@ -48,6 +50,7 @@ func (a *App) Run(ctx context.Context) error {
 	defer client.Close()
 
 	go a.loop(ctx, client)
+	go a.readLoop(ctx, client)
 
 	<-ctx.Done()
 
@@ -79,5 +82,24 @@ func (a *App) loop(ctx context.Context, client *websocket.Client) {
 func init() {
 	if os.Getenv("CI") == "" {
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
+	}
+}
+
+func (a *App) readLoop(ctx context.Context, client *websocket.Client) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			msg, err := client.Read()
+			if err != nil {
+				log.Printf("read failed: %v", err)
+				return
+			}
+
+			log.Printf("received: %s", msg)
+
+			// Здесь обработка команд от панели
+		}
 	}
 }
