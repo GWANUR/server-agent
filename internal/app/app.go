@@ -35,6 +35,17 @@ func (a *App) Run(ctx context.Context) error {
 
 		if err := client.Connect(); err == nil {
 			log.Println("Connected to panel")
+			payload, _ := json.Marshal(map[string]any{
+				"agent_id": a.Config.Agent.ID,
+				"test":     true,
+			})
+
+			err := client.Send(websocket.Message{
+				Type:    "hello",
+				Payload: payload,
+			})
+
+			log.Printf("Send result: %v", err)
 			break
 		} else {
 			log.Printf("Connect failed: %v", err)
