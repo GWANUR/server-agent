@@ -1,6 +1,6 @@
 agent:
   uuid: "100f0685-688b-46e9-b588-fcd3055865c7"
-  name: "Ubuntu Server"
+  name: "ServerAlexStack"
   version: "0.1.0"
 
 panel:
