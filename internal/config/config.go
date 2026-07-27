@@ -9,8 +9,9 @@ import (
 
 type Config struct {
 	Agent struct {
-		ID   string `yaml:"id"`
-		Name string `yaml:"name"`
+		UUID    string `yaml:"id"`
+		Name    string `yaml:"name"`
+		Version string `yamal"verison`
 	} `yaml:"agent"`
 
 	Panel struct {

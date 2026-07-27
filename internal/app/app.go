@@ -24,7 +24,7 @@ func New() (*App, error) {
 		return nil, err
 	}
 
-	if cfg.Agent.ID == "" {
+	if cfg.Agent.UUID == "" {
 		return nil, fmt.Errorf("agent ID is required in config")
 	}
 
@@ -34,7 +34,7 @@ func New() (*App, error) {
 func (a *App) Run(ctx context.Context) error {
 	log.Println("Server Agent started")
 	log.Println("Panel URL:", a.Config.Panel.URL)
-	log.Println("Agent ID:", a.Config.Agent.ID)
+	log.Println("Agent ID:", a.Config.Agent.UUID)
 
 	// Инициализируем клиент ТОЛЬКО через New (без Dial)
 	client := websocket.New(a.Config.Panel.URL)
@@ -49,7 +49,7 @@ func (a *App) Run(ctx context.Context) error {
 	log.Println("Connected to panel")
 
 	payloadData := map[string]any{
-		"agent_id": a.Config.Agent.ID,
+		"agent_id": a.Config.Agent.UUID,
 		"token":    a.Config.Panel.Token,
 	}
 
@@ -97,7 +97,7 @@ func (a *App) loop(ctx context.Context, client *websocket.Client) {
 			}
 
 			payload, mErr := json.Marshal(map[string]any{
-				"agent_id": a.Config.Agent.ID,
+				"agent_id": a.Config.Agent.UUID,
 				"stats":    stats,
 			})
 			if mErr != nil {
