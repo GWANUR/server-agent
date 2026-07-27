@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
+	"net/http"
+	"time"
+
 	"server-agent/internal/config"
 	"server-agent/internal/monitor"
-	"server-agent/internal/websocket"
-	"time"
+
+	"github.com/gorilla/websocket" // или твой internal/websocket, но важно, чтобы он использовал gorilla/websocket
 )
 
 type App struct {
@@ -21,6 +23,10 @@ func New() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Проверка, что токен и UUID есть
+	if cfg.Panel.Token == "" || cfg.Agent.ID == "" {
+		return nil, fmt.Errorf("missing token or agent ID in config")
+	}
 	return &App{Config: cfg}, nil
 }
 
@@ -29,72 +35,42 @@ func (a *App) Run(ctx context.Context) error {
 	log.Println("Panel URL:", a.Config.Panel.URL)
 	log.Println("Agent ID:", a.Config.Agent.ID)
 
-	client := websocket.New(a.Config.Panel.URL)
+	// Подготовка заголовков для WebSocket handshake
+	headers := http.Header{}
+	headers.Set("X-Agent-Token", a.Config.Panel.Token)
+	headers.Set("X-Agent-UUID", a.Config.Agent.ID)
 
-	for {
-		log.Println("Connecting to panel...")
-
-		if err := client.Connect(); err == nil {
-			log.Println("Connected to panel")
-			payload, _ := json.Marshal(map[string]any{
-				"agent_id": a.Config.Agent.ID,
-			})
-
-			err := client.Send(websocket.Message{
-				Type:    "auth",
-				Payload: payload,
-			})
-			if err != nil {
-				return err
-			}
-			log.Println("Auth message sent")
-			log.Printf("Send result: %v", err)
-			break
-		} else {
-			log.Printf("Connect failed: %v", err)
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(5 * time.Second):
-		}
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
 	}
 
-	msg, err := client.Read()
+	conn, resp, err := dialer.Dial(a.Config.Panel.URL, headers)
 	if err != nil {
+		log.Printf("Dial failed: %v", err)
+		if resp != nil {
+			log.Printf("HTTP status: %d, body: %s", resp.StatusCode, resp.Body)
+		}
 		return err
 	}
+	defer conn.Close()
 
-	log.Printf("received: %s", msg)
-	type ServerMessage struct {
-		Type string `json:"type"`
-	}
+	log.Println("Connected to panel (handshake successful)")
 
-	var response ServerMessage
+	// Здесь можно отправить первое сообщение, если сервер требует, например, "ready"
+	// Но НЕ отправляй отдельный auth-пакет, если аутентификация уже была в заголовках
 
-	if err := json.Unmarshal([]byte(msg), &response); err != nil {
-		return err
-	}
+	go a.loop(ctx, conn)
+	go a.readLoop(ctx, conn)
 
-	if response.Type != "auth_ok" {
-		return fmt.Errorf("authentication failed: %s", response.Type)
-	}
-
-	log.Println("Agent authorized")
-	defer client.Close()
-
-	go a.loop(ctx, client)
-	go a.readLoop(ctx, client)
 	<-ctx.Done()
-
 	log.Println("Stopping Server Agent")
 	return nil
 }
 
-func (a *App) loop(ctx context.Context, client *websocket.Client) {
+func (a *App) loop(ctx context.Context, conn *websocket.Conn) {
 	ticker := time.NewTicker(time.Duration(a.Config.Monitor.Interval) * time.Second)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -105,35 +81,69 @@ func (a *App) loop(ctx context.Context, client *websocket.Client) {
 				log.Printf("collect metrics failed: %v", err)
 				continue
 			}
-			if client != nil {
-				payload, _ := json.Marshal(map[string]any{"agent_id": a.Config.Agent.ID, "stats": stats})
-				_ = client.Send(websocket.Message{Type: "stats", Payload: payload})
+
+			payload, err := json.Marshal(map[string]any{
+				"agent_id": a.Config.Agent.ID,
+				"stats":    stats,
+			})
+			if err != nil {
+				log.Printf("marshal stats failed: %v", err)
+				continue
+			}
+
+			message := map[string]any{
+				"type":    "stats",
+				"payload": payload,
+			}
+
+			data, err := json.Marshal(message)
+			if err != nil {
+				log.Printf("marshal message failed: %v", err)
+				continue
+			}
+
+			err = conn.WriteMessage(websocket.TextMessage, data)
+			if err != nil {
+				log.Printf("write stats failed: %v", err)
+				return // соединение разорвано, нужно переподключаться
 			}
 		}
 	}
 }
 
-func init() {
-	if os.Getenv("CI") == "" {
-		log.SetFlags(log.LstdFlags | log.Lshortfile)
-	}
-}
-
-func (a *App) readLoop(ctx context.Context, client *websocket.Client) {
+func (a *App) readLoop(ctx context.Context, conn *websocket.Conn) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			msg, err := client.Read()
+			_, msg, err := conn.ReadMessage()
 			if err != nil {
 				log.Printf("read failed: %v", err)
-				return
+				return // разрыв соединения, Run завершит работу, можно сделать retry снаружи
 			}
 
 			log.Printf("received: %s", msg)
 
-			// Здесь обработка команд от панели
+			// Тут парсишь команды от панели и выполняешь
+			var raw map[string]any
+			if err := json.Unmarshal(msg, &raw); err != nil {
+				log.Printf("unmarshal failed: %v", err)
+				continue
+			}
+
+			typ, ok := raw["type"].(string)
+			if !ok {
+				continue
+			}
+
+			switch typ {
+			case "command.run":
+				// тут логика выполнения команды
+				log.Printf("Command received: %+v", raw)
+			default:
+				log.Printf("Unknown message type: %s", typ)
+			}
 		}
 	}
 }
