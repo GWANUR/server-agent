@@ -9,7 +9,7 @@ import (
 
 type Config struct {
 	Agent struct {
-		UUID    string `yaml:"id"`
+		UUID    string `yaml:"uuid"`
 		Name    string `yaml:"name"`
 		Version string `yamal"verison`
 	} `yaml:"agent"`

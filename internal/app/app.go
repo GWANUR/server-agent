@@ -25,7 +25,7 @@ func New() (*App, error) {
 	}
 
 	if cfg.Agent.UUID == "" {
-		return nil, fmt.Errorf("agent ID is required in config")
+		return nil, fmt.Errorf("agent UUID is required in config")
 	}
 
 	return &App{Config: cfg}, nil
