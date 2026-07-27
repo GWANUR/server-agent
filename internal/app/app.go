@@ -25,7 +25,8 @@ func New() (*App, error) {
 		return nil, err
 	}
 
-	token := os.Getenv("PANEL_TOKEN")
+	token := "d693935112653acf3d1bf0990d85625fb526c52a7e0570e4c3deb1e4186cffad"
+	// token := os.Getenv("PANEL_TOKEN")
 	if token == "" {
 		return nil, fmt.Errorf("PANEL_TOKEN env var is required")
 	}
