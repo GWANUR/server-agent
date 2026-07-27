@@ -24,14 +24,6 @@ func New() (*App, error) {
 		return nil, err
 	}
 
-	token := "d693935112653acf3d1bf0990d85625fb526c52a7e0570e4c3deb1e4186cffad"
-	// token := os.Getenv("PANEL_TOKEN")
-	if token == "" {
-		return nil, fmt.Errorf("PANEL_TOKEN env var is required")
-	}
-
-	cfg.Panel.Token = token
-
 	if cfg.Agent.ID == "" {
 		return nil, fmt.Errorf("agent ID is required in config")
 	}
@@ -48,8 +40,6 @@ func (a *App) Run(ctx context.Context) error {
 	client := websocket.New(a.Config.Panel.URL)
 
 	// Устанавливаем заголовки для WebSocket handshake
-	client.SetHeader("X-Agent-Token", a.Config.Panel.Token)
-	client.SetHeader("X-Agent-UUID", a.Config.Agent.ID)
 
 	log.Println("Connecting to panel...")
 	if err := client.Connect(ctx); err != nil {
@@ -60,6 +50,7 @@ func (a *App) Run(ctx context.Context) error {
 
 	payloadData := map[string]any{
 		"agent_id": a.Config.Agent.ID,
+		"token":    a.Config.Panel.Token,
 	}
 
 	payloadBytes, err := json.Marshal(payloadData)

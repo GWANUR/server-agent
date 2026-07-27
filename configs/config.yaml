@@ -1,14 +1,21 @@
+
 agent:
-  id: "server-agent-01"
-  name: "Server Agent"
+  uuid: "100f0685-688b-46e9-b588-fcd3055865c7"
+  name: "ServerAlexStack"
+  version: "0.1.0"
+
 panel:
   url: "ws://192.168.0.147/ws/agent"
-  token: "demo-token"
+  token: "d693935112653acf3d1bf0990d85625fb526c52a7e0570e4c3deb1e4186cffad"
+
 heartbeat:
-  interval: 10
+  interval: 15
+
 terminal:
-  shell: "bash"
+  shell: "/bin/bash"
+
 monitor:
-  interval: 5
+  interval: 2
+
 logger:
   level: "info"
