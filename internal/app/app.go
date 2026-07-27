@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"server-agent/internal/config"
@@ -59,17 +58,8 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	log.Println("Connected to panel")
 
-	// Формируем payload для auth с обязательными полями
-	hostname, hErr := os.Hostname()
-	if hErr != nil {
-		hostname = "unknown"
-	}
-
 	payloadData := map[string]any{
 		"agent_id": a.Config.Agent.ID,
-		"hostname": hostname,
-		"os":       os.Getenv("GOOS"),
-		"arch":     os.Getenv("GOARCH"),
 	}
 
 	payloadBytes, err := json.Marshal(payloadData)
