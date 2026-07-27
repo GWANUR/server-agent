@@ -49,8 +49,9 @@ func (a *App) Run(ctx context.Context) error {
 	log.Println("Connected to panel")
 
 	payloadData := map[string]any{
-		"agent_id": a.Config.Agent.UUID,
-		"token":    a.Config.Panel.Token,
+		"agent_id":   a.Config.Agent.UUID,
+		"agent_name": a.Config.Agent.Name,
+		"token":      a.Config.Panel.Token,
 	}
 
 	payloadBytes, err := json.Marshal(payloadData)
