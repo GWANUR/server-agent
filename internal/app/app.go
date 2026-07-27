@@ -1,3 +1,5 @@
+// internal/app/app.go
+
 package app
 
 import (
@@ -5,13 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
+	"os"
 	"time"
 
 	"server-agent/internal/config"
 	"server-agent/internal/monitor"
-
-	"github.com/gorilla/websocket" // или твой internal/websocket, но важно, чтобы он использовал gorilla/websocket
+	"server-agent/internal/websocket"
 )
 
 type App struct {
@@ -23,10 +24,18 @@ func New() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Проверка, что токен и UUID есть
-	if cfg.Panel.Token == "" || cfg.Agent.ID == "" {
-		return nil, fmt.Errorf("missing token or agent ID in config")
+
+	token := os.Getenv("PANEL_TOKEN")
+	if token == "" {
+		return nil, fmt.Errorf("PANEL_TOKEN env var is required")
 	}
+
+	cfg.Panel.Token = token
+
+	if cfg.Agent.ID == "" {
+		return nil, fmt.Errorf("agent ID is required in config")
+	}
+
 	return &App{Config: cfg}, nil
 }
 
@@ -35,39 +44,62 @@ func (a *App) Run(ctx context.Context) error {
 	log.Println("Panel URL:", a.Config.Panel.URL)
 	log.Println("Agent ID:", a.Config.Agent.ID)
 
-	// Подготовка заголовков для WebSocket handshake
-	headers := http.Header{}
-	headers.Set("X-Agent-Token", a.Config.Panel.Token)
-	headers.Set("X-Agent-UUID", a.Config.Agent.ID)
+	// Инициализируем клиент ТОЛЬКО через New (без Dial)
+	client := websocket.New(a.Config.Panel.URL)
 
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 10 * time.Second,
+	// Устанавливаем заголовки для WebSocket handshake
+	client.SetHeader("X-Agent-Token", a.Config.Panel.Token)
+	client.SetHeader("X-Agent-UUID", a.Config.Agent.ID)
+
+	log.Println("Connecting to panel...")
+	if err := client.Connect(ctx); err != nil {
+		log.Printf("Connect failed: %v", err)
+		return fmt.Errorf("failed to connect to panel: %w", err)
+	}
+	log.Println("Connected to panel")
+
+	// Формируем payload для auth с обязательными полями
+	hostname, hErr := os.Hostname()
+	if hErr != nil {
+		hostname = "unknown"
 	}
 
-	conn, resp, err := dialer.Dial(a.Config.Panel.URL, headers)
+	payloadData := map[string]any{
+		"agent_id": a.Config.Agent.ID,
+		"hostname": hostname,
+		"os":       os.Getenv("GOOS"),
+		"arch":     os.Getenv("GOARCH"),
+	}
+
+	payloadBytes, err := json.Marshal(payloadData)
 	if err != nil {
-		log.Printf("Dial failed: %v", err)
-		if resp != nil {
-			log.Printf("HTTP status: %d, body: %s", resp.StatusCode, resp.Body)
-		}
-		return err
+		return fmt.Errorf("failed to marshal auth payload: %w", err)
 	}
-	defer conn.Close()
 
-	log.Println("Connected to panel (handshake successful)")
+	// Отправляем auth-сообщение
+	err = client.Send(websocket.Message{
+		Type:    "auth",
+		Payload: payloadBytes,
+	})
+	if err != nil {
+		log.Printf("Failed to send auth message: %v", err)
+		client.Close()
+		return fmt.Errorf("auth send failed: %w", err)
+	}
+	log.Println("Auth message sent")
 
-	// Здесь можно отправить первое сообщение, если сервер требует, например, "ready"
-	// Но НЕ отправляй отдельный auth-пакет, если аутентификация уже была в заголовках
-
-	go a.loop(ctx, conn)
-	go a.readLoop(ctx, conn)
+	// Дальше твои рабочие циклы
+	go a.loop(ctx, client)
+	go a.readLoop(ctx, client)
 
 	<-ctx.Done()
+
 	log.Println("Stopping Server Agent")
+	client.Close()
 	return nil
 }
 
-func (a *App) loop(ctx context.Context, conn *websocket.Conn) {
+func (a *App) loop(ctx context.Context, client *websocket.Client) {
 	ticker := time.NewTicker(time.Duration(a.Config.Monitor.Interval) * time.Second)
 	defer ticker.Stop()
 
@@ -82,53 +114,46 @@ func (a *App) loop(ctx context.Context, conn *websocket.Conn) {
 				continue
 			}
 
-			payload, err := json.Marshal(map[string]any{
+			payload, mErr := json.Marshal(map[string]any{
 				"agent_id": a.Config.Agent.ID,
 				"stats":    stats,
 			})
-			if err != nil {
-				log.Printf("marshal stats failed: %v", err)
+			if mErr != nil {
+				log.Printf("marshal stats failed: %v", mErr)
 				continue
 			}
 
-			message := map[string]any{
-				"type":    "stats",
-				"payload": payload,
+			msg := websocket.Message{
+				Type:    "stats",
+				Payload: payload,
 			}
 
-			data, err := json.Marshal(message)
-			if err != nil {
-				log.Printf("marshal message failed: %v", err)
-				continue
-			}
-
-			err = conn.WriteMessage(websocket.TextMessage, data)
-			if err != nil {
-				log.Printf("write stats failed: %v", err)
-				return // соединение разорвано, нужно переподключаться
+			if sErr := client.Send(msg); sErr != nil {
+				log.Printf("send stats failed: %v", sErr)
+				// соединение разорвано — можно выйти, переподключение лучше делать снаружи
+				return
 			}
 		}
 	}
 }
 
-func (a *App) readLoop(ctx context.Context, conn *websocket.Conn) {
+func (a *App) readLoop(ctx context.Context, client *websocket.Client) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			_, msg, err := conn.ReadMessage()
+			data, err := client.Read()
 			if err != nil {
 				log.Printf("read failed: %v", err)
-				return // разрыв соединения, Run завершит работу, можно сделать retry снаружи
+				return // разрыв соединения
 			}
 
-			log.Printf("received: %s", msg)
+			log.Printf("received: %s", string(data))
 
-			// Тут парсишь команды от панели и выполняешь
 			var raw map[string]any
-			if err := json.Unmarshal(msg, &raw); err != nil {
-				log.Printf("unmarshal failed: %v", err)
+			if uErr := json.Unmarshal(data, &raw); uErr != nil {
+				log.Printf("unmarshal failed: %v", uErr)
 				continue
 			}
 
@@ -139,8 +164,8 @@ func (a *App) readLoop(ctx context.Context, conn *websocket.Conn) {
 
 			switch typ {
 			case "command.run":
-				// тут логика выполнения команды
 				log.Printf("Command received: %+v", raw)
+				// тут логика выполнения команды
 			default:
 				log.Printf("Unknown message type: %s", typ)
 			}

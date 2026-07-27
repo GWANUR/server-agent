@@ -1,16 +1,21 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 type Client struct {
-	conn *websocket.Conn
-	url  string
+	conn    *websocket.Conn
+	headers http.Header
+	url     string
 }
 
 type Message struct {
@@ -19,14 +24,39 @@ type Message struct {
 }
 
 func New(url string) *Client {
-	return &Client{url: url}
+	return &Client{
+		url:     url,
+		headers: http.Header{},
+	}
 }
 
-func (c *Client) Connect() error {
-	conn, _, err := websocket.DefaultDialer.Dial(c.url, nil)
+func (c *Client) SetHeader(key, value string) {
+	c.headers.Set(key, value)
+}
+
+func (c *Client) Connect(ctx context.Context) error {
+	if c.conn != nil {
+		return nil // уже подключено
+	}
+
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+	}
+
+	conn, resp, err := dialer.Dial(c.url, c.headers)
 	if err != nil {
+		// Используем resp: если ошибка на уровне HTTP (например, 502 от Nginx),
+		// resp будет не nil и покажет статус и тело ошибки.
+		if resp != nil {
+			body, _ := io.ReadAll(resp.Body)
+			log.Printf("WebSocket handshake failed: %v | HTTP status: %d | body: %s",
+				err, resp.StatusCode, string(body))
+		} else {
+			log.Printf("WebSocket handshake failed: %v", err)
+		}
 		return err
 	}
+
 	c.conn = conn
 	return nil
 }
